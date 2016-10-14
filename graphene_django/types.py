@@ -2,11 +2,13 @@ from collections import OrderedDict
 
 import six
 
-from graphene import Field, ObjectType
+from graphene import Field, ObjectType, Boolean
 from graphene.types.objecttype import ObjectTypeMeta
 from graphene.types.options import Options
 from graphene.types.utils import merge, yank_fields_from_attrs
 from graphene.utils.is_base_type import is_base_type
+from rest_framework import serializers
+from graphene.relay.mutation import ClientIDMutationMeta, ClientIDMutation
 
 from .converter import convert_django_field_with_choices
 from .registry import Registry, get_global_registry
@@ -118,3 +120,71 @@ class DjangoObjectType(six.with_metaclass(DjangoObjectTypeMeta, ObjectType)):
             return cls._meta.model.objects.get(pk=id)
         except cls._meta.model.DoesNotExist:
             return None
+
+def make_model_serializer(target_model):
+    class EditModelSerializer(serializers.ModelSerializer):
+        class Meta:
+            model = target_model
+
+    return EditModelSerializer
+
+class DjangoMutationMeta(ClientIDMutationMeta):
+    @staticmethod
+    def __new__(cls, name, bases, attrs):
+        # Also ensure initialization is only performed for subclasses of
+        # DjangoMutation
+        if not is_base_type(bases, DjangoMutationMeta):
+            return type.__new__(cls, name, bases, attrs)
+
+        defaults = dict(
+            name=name,
+            description=attrs.pop('__doc__', None),
+            model=None,
+            local_fields=None,
+            only_fields=(),
+            exclude_fields=(),
+            interfaces=(),
+            registry=None,
+            fields=()
+        )
+
+        meta = attrs.pop('MutationMeta')
+        for default, value in defaults.items():
+            if not hasattr(meta, default):
+                setattr(meta, default, value)
+
+        meta.serializer = make_model_serializer(meta.model)
+
+        cls._mutation = meta
+
+        model_fields = construct_fields(meta)
+
+        # input_attrs = model_fields
+        input_class = type('Input', (object, ), model_fields)
+
+        attributes = dict(attrs,
+            ok=Boolean(),
+            Input=input_class)
+        if meta.result:
+            attributes['result'] = Field(meta.result)
+
+        return ClientIDMutationMeta.__new__(cls, name, bases, attributes)
+
+@six.add_metaclass(DjangoMutationMeta)
+class DjangoMutation(ClientIDMutation):
+    @classmethod
+    def mutate_and_get_payload(cls, input, context, info):
+        instance = cls.get_instance(input, context, info)
+
+        data = input
+
+        serializer = cls._mutation.serializer(instance,
+            data=data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+
+            return cls(ok=True, result=instance)
+
+        return cls(ok=False, result=instance)
+
