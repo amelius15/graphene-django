@@ -9,7 +9,7 @@ from graphene.types.datetime import DateTime
 from graphene.types.json import JSONString
 
 from ..compat import (ArrayField, HStoreField, JSONField, MissingType,
-                      RangeField)
+                      RangeField, UUIDField, DurationField)
 from ..converter import convert_django_field, convert_django_field_with_choices
 from ..registry import Registry
 from ..types import DjangoObjectType
@@ -80,6 +80,16 @@ def test_should_auto_convert_id():
     assert_conversion(models.AutoField, graphene.ID, primary_key=True)
 
 
+@pytest.mark.skipif(UUIDField == MissingType, reason="requires Django UUIDField")
+def test_should_auto_convert_id():
+    assert_conversion(UUIDField, graphene.ID)
+
+
+@pytest.mark.skipif(DurationField == MissingType, reason="requires Django DurationField")
+def test_should_auto_convert_duration():
+    assert_conversion(DurationField, graphene.Float)
+
+
 def test_should_positive_integer_convert_int():
     assert_conversion(models.PositiveIntegerField, graphene.Int)
 
@@ -124,10 +134,10 @@ def test_field_with_choices_convert_enum():
     graphene_type = convert_django_field_with_choices(field)
     assert isinstance(graphene_type, graphene.Enum)
     assert graphene_type._meta.name == 'TranslatedModelLanguage'
-    assert graphene_type._meta.enum.__members__['SPANISH'].value == 'es'
-    assert graphene_type._meta.enum.__members__['SPANISH'].description == 'Spanish'
-    assert graphene_type._meta.enum.__members__['ENGLISH'].value == 'en'
-    assert graphene_type._meta.enum.__members__['ENGLISH'].description == 'English'
+    assert graphene_type._meta.enum.__members__['ES'].value == 'es'
+    assert graphene_type._meta.enum.__members__['ES'].description == 'Spanish'
+    assert graphene_type._meta.enum.__members__['EN'].value == 'en'
+    assert graphene_type._meta.enum.__members__['EN'].description == 'English'
 
 
 def test_field_with_grouped_choices():
