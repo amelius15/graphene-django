@@ -155,8 +155,6 @@ class DjangoMutationMeta(ClientIDMutationMeta):
 
         meta.serializer = make_model_serializer(meta.model)
 
-        cls._mutation = meta
-
         model_fields = construct_fields(meta)
 
         # input_attrs = model_fields
@@ -168,7 +166,11 @@ class DjangoMutationMeta(ClientIDMutationMeta):
         if meta.result:
             attributes['result'] = Field(meta.result)
 
-        return ClientIDMutationMeta.__new__(cls, name, bases, attributes)
+        parent = ClientIDMutationMeta.__new__(cls, name, bases, attributes)
+
+        parent._mutation = meta
+
+        return parent
 
 @six.add_metaclass(DjangoMutationMeta)
 class DjangoMutation(ClientIDMutation):
@@ -177,14 +179,12 @@ class DjangoMutation(ClientIDMutation):
         instance = cls.get_instance(input, context, info)
 
         data = input
+        for key, value in data.items():
+            setattr(instance, key, value)
 
-        serializer = cls._mutation.serializer(instance,
-            data=data, partial=True)
+        instance.save()
 
-        if serializer.is_valid():
-            serializer.save()
+        result = cls._mutation.model.objects.get(pk=instance.pk)
 
-            return cls(ok=True, result=instance)
-
-        return cls(ok=False, result=instance)
+        return cls(ok=True, result=result)
 
