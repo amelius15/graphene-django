@@ -10,7 +10,8 @@ from graphene.types.utils import merge, yank_fields_from_attrs
 from graphene.utils.is_base_type import is_base_type
 from rest_framework import serializers
 from graphene.relay.mutation import ClientIDMutationMeta, ClientIDMutation
-
+from graphene.utils.props import props
+# from graphene.utils.get_unbound_function import get_unbound_function
 from .converter import convert_django_field_with_choices
 from .registry import Registry, get_global_registry
 from .utils import (DJANGO_FILTER_INSTALLED, get_model_fields,
@@ -34,6 +35,7 @@ def construct_fields(options):
             continue
         converted = convert_django_field_with_choices(field, options.registry)
         if not converted:
+            print('failed to convert', field)
             continue
         fields[name] = converted
 
@@ -132,12 +134,12 @@ def make_model_serializer(target_model):
 
     return EditModelSerializer
 
-class DjangoMutationMeta(ClientIDMutationMeta):
+class DjangoRelayMutationMeta(ClientIDMutationMeta):
     @staticmethod
     def __new__(cls, name, bases, attrs):
         # Also ensure initialization is only performed for subclasses of
         # DjangoMutation
-        if not is_base_type(bases, DjangoMutationMeta):
+        if not is_base_type(bases, DjangoRelayMutationMeta):
             return type.__new__(cls, name, bases, attrs)
 
         defaults = dict(
@@ -159,6 +161,11 @@ class DjangoMutationMeta(ClientIDMutationMeta):
 
         meta.serializer = make_model_serializer(meta.model)
 
+        # if not meta.registry:
+        #     meta.registry = 
+
+        if not meta.registry:
+            meta.registry = get_global_registry()
         model_fields = construct_fields(meta)
 
         # input_attrs = model_fields
@@ -176,8 +183,8 @@ class DjangoMutationMeta(ClientIDMutationMeta):
 
         return parent
 
-@six.add_metaclass(DjangoMutationMeta)
-class DjangoMutation(ClientIDMutation):
+@six.add_metaclass(DjangoRelayMutationMeta)
+class DjangoRelayMutation(ClientIDMutation):
     @classmethod
     def mutate_and_get_payload(cls, input, context, info):
         instance = cls.get_instance(input, context, info)
@@ -187,8 +194,118 @@ class DjangoMutation(ClientIDMutation):
             setattr(instance, key, value)
 
         instance.save()
-
         result = cls._mutation.model.objects.get(pk=instance.pk)
 
         return cls(ok=True, result=result)
+
+# class DjangoMutationMeta(ObjectTypeMeta):
+#     # @staticmethod
+#     def __new__(cls, name, bases, attrs):
+#         # Also ensure initialization is only performed for subclasses of
+#         # Mutation
+#         if not is_base_type(bases, DjangoMutationMeta):
+#             return type.__new__(cls, name, bases, attrs)
+
+#         defaults = dict(
+#             name=name,
+#             description=attrs.pop('__doc__', None),
+#             model=None,
+#             local_fields=None,
+#             only_fields=(),
+#             exclude_fields=(),
+#             interfaces=(),
+#             registry=None,
+#             fields=()
+#         )
+
+#         meta = attrs.pop('MutationMeta')
+
+#         for default, value in defaults.items():
+#             if not hasattr(meta, default):
+#                 setattr(meta, default, value)
+#         meta.serializer = make_model_serializer(meta.model)
+
+#         # if not meta.registry:
+#         #     meta.registry = 
+
+#         # if not meta.registry:
+#         #     meta.registry = get_global_registry()
+#         model_fields = construct_fields(meta)
+
+#         # input_attrs = model_fields
+#         input_class = type('Input', (object, ), model_fields)
+
+#         attributes = dict(attrs,
+#             ok=Boolean(),
+#             Input=input_class)
+#         if meta.result:
+#             attributes['result'] = Field(meta.result)
+#         # input_class = attrs.pop('Input', None)
+
+#         cls = ObjectTypeMeta.__new__(cls, name, bases, attributes)
+#         field_args = props(input_class) if input_class else {}
+#         resolver = getattr(cls, 'mutate', None)
+#         assert resolver, 'All mutations must define a mutate method in it'
+#         resolver = get_unbound_function(resolver)
+#         cls.Field = partial(Field, cls, args=field_args, resolver=resolver)
+#         return cls
+    # def __new__(cls, name, bases, attrs):
+    #     # Also ensure initialization is only performed for subclasses of
+    #     # DjangoMutation
+    #     if not is_base_type(bases, DjangoMutationMeta):
+    #         return type.__new__(cls, name, bases, attrs)
+
+    #     defaults = dict(
+    #         name=name,
+    #         description=attrs.pop('__doc__', None),
+    #         model=None,
+    #         local_fields=None,
+    #         only_fields=(),
+    #         exclude_fields=(),
+    #         interfaces=(),
+    #         registry=None,
+    #         fields=()
+    #     )
+
+    #     meta = attrs.pop('MutationMeta')
+    #     for default, value in defaults.items():
+    #         if not hasattr(meta, default):
+    #             setattr(meta, default, value)
+
+    #     meta.serializer = make_model_serializer(meta.model)
+
+    #     # if not meta.registry:
+    #     #     meta.registry = 
+
+    #     if not meta.registry:
+    #         meta.registry = get_global_registry()
+    #     model_fields = construct_fields(meta)
+
+    #     # input_attrs = model_fields
+    #     input_class = type('Input', (object, ), model_fields)
+
+    #     attributes = dict(attrs,
+    #         ok=Boolean(),
+    #         Input=input_class)
+    #     if meta.result:
+    #         attributes['result'] = Field(meta.result)
+
+    #     parent = MutationMeta.__new__(cls, name, bases, attributes)
+    #     parent._mutation = meta
+
+        # return parent
+
+# @six.add_metaclass(DjangoMutationMeta, ObjectTypeMeta)
+# class DjangoMutation(six.with_metaclass(DjangoMutationMeta, ObjectTypeMeta)):
+#     def mutate(self, args, context, info):
+#         instance = cls.get_instance(args, context, info)
+
+#         data = args
+#         for key, value in data.items():
+#             setattr(instance, key, value)
+
+#         instance.save()
+#         result = cls._mutation.model.objects.get(pk=instance.pk)
+
+#         return cls(ok=True, result=result)
 

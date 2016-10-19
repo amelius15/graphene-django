@@ -1,6 +1,6 @@
 from .types import (
     DjangoObjectType,
-    DjangoMutation
+    DjangoRelayMutation
 )
 from .fields import (
     DjangoConnectionField,
@@ -8,4 +8,4 @@ from .fields import (
 
 __all__ = ['DjangoObjectType',
            'DjangoConnectionField',
-           'DjangoMutation']
+           'DjangoRelayMutation']
